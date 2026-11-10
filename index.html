@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon Team Type Matchup Calculator</title>
+<meta name="description" content="Find the best attacking type against a team of three Pokémon from Generations 1–5.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a scouting sheet. Team entry on top, one loud verdict band, then the full ranked matrix. */
+:root{
+  --bg:#eef1f0; --surface:#ffffff; --ink:#14262b; --muted:#5b6d70; --line:#cfd8d6;
+  --accent:#0f6e6a; --accent-ink:#ffffff; --band:#12343a; --band-ink:#f2f7f5;
+  --good:#17703f; --good-bg:#dff3e6; --bad:#a3312a; --bad-bg:#f9e1de; --flat-bg:#eef1f0;
+  --display:"Bricolage Grotesque","Trebuchet MS",sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0e1a1d; --surface:#16272b; --ink:#e6efed; --muted:#93a8a8; --line:#2b4146;
+    --accent:#4fc4b8; --accent-ink:#062422; --band:#1f4a50; --band-ink:#f2f7f5;
+    --good:#7ddba0; --good-bg:#153a26; --bad:#f29a90; --bad-bg:#45201d; --flat-bg:#1b2f33;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0e1a1d; --surface:#16272b; --ink:#e6efed; --muted:#93a8a8; --line:#2b4146;
+  --accent:#4fc4b8; --accent-ink:#062422; --band:#1f4a50; --band-ink:#f2f7f5;
+  --good:#7ddba0; --good-bg:#153a26; --bad:#f29a90; --bad-bg:#45201d; --flat-bg:#1b2f33;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+main{max-width:980px;margin:0 auto;padding:28px 16px 48px;display:flex;flex-direction:column;gap:22px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(1.7rem,4.5vw,2.5rem);line-height:1.05;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:600;font-size:1.15rem;margin:0}
+.lede{color:var(--muted);margin:6px 0 0;max-width:60ch}
+header{display:flex;flex-direction:column}
+.bar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-weight:500;cursor:pointer;border-radius:8px;padding:8px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;border-radius:0;background:transparent;padding:8px 12px;font-size:.9rem}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:720px){.slots{grid-template-columns:1fr}}
+.slot{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.slot label{font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.slot input{font:inherit;font-weight:600;font-size:1.05rem;width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.info{display:flex;flex-direction:column;gap:8px;min-height:74px;font-size:.9rem}
+.info .row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.info .k{color:var(--muted);font-size:.8rem;margin-right:2px}
+.dex{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.err{color:var(--bad)}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 10px;font-size:.8rem;font-weight:600;color:#fff;background:var(--c,#666);white-space:nowrap;line-height:1.5}
+.chip.sm{font-size:.74rem;padding:1px 8px}
+.chip b{font-family:var(--mono);font-weight:600;font-size:.72rem}
+.chip.big{font-family:var(--display);font-size:clamp(1.5rem,5vw,2.2rem);font-weight:800;padding:4px 22px;line-height:1.25}
+.verdict{background:var(--band);color:var(--band-ink);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.verdict .eyebrow{font-size:.78rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+.verdict .best{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.verdict p{margin:0;max-width:65ch}
+.verdict .next{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.9rem}
+.verdict .next span.k{opacity:.75;margin-right:4px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:520px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line);font-size:.9rem}
+thead th{font-size:.78rem;color:var(--muted);font-weight:600;vertical-align:bottom}
+tbody tr:last-child td{border-bottom:0}
+td.rank{font-family:var(--mono);color:var(--muted);width:2.5em}
+td.m{text-align:center;width:17%}
+th.m{text-align:center}
+.x{display:inline-block;min-width:3.1em;border-radius:6px;padding:2px 6px;font-family:var(--mono);font-weight:600;font-size:.88rem;text-align:center;background:var(--flat-bg);color:var(--muted)}
+.x.g{background:var(--good-bg);color:var(--good)}
+.x.gg{background:var(--good);color:var(--surface)}
+.x.b{background:var(--bad-bg);color:var(--bad)}
+.x.z{background:var(--bad);color:var(--surface)}
+td.sum{color:var(--muted);font-size:.85rem}
+tr.top td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.opt{font-family:var(--body);font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+button:disabled{opacity:.55;cursor:default}
+.cov{gap:4px}
+.x-del{border:0;background:transparent;color:inherit;padding:0 0 0 4px;font-size:.85rem;line-height:1;cursor:pointer;opacity:.8}
+.x-del:hover{opacity:1}
+.cov-add{font:inherit;font-size:.75rem;padding:1px 4px;border-radius:6px;border:1px dashed var(--line);background:var(--surface);color:var(--muted);max-width:7.5em}
+.front-btn{font-size:.75rem;padding:2px 9px;border-radius:999px}
+.front-btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.paste{border:2px dashed var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;cursor:pointer;color:var(--muted);font-size:.9rem;background:var(--bg)}
+.paste strong{color:var(--ink);font-size:1rem}
+.paste:hover,.paste.over{border-color:var(--accent)}
+.paste:focus-visible,.paste:focus{outline:none;border-style:solid;border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--bg))}
+.paste.off{opacity:.55;cursor:default}
+#mine-out{display:flex;flex-direction:column;gap:18px}
+#mine-out:empty{display:none}
+.callout{background:var(--flat-bg);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.callout strong{font-family:var(--display);font-size:1.15rem}
+.mon{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mon-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-weight:600}
+.tag{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 4px;margin-left:6px}
+tr.off td{color:var(--muted)}
+.plan{display:flex;flex-direction:column;gap:10px}
+h3{font-family:var(--display);font-weight:600;font-size:1rem;margin:0}
+.act{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:4px}
+.act.st{border-left-color:#8e3f93}
+.act.sw{border-left-color:var(--bad)}
+.act.bench{border-left-color:var(--line);border-style:dashed solid dashed solid}
+.act p{margin:0;font-size:.92rem;max-width:75ch}
+.act p.alt{color:var(--muted);font-size:.85rem}
+.act-who{display:flex;gap:8px;align-items:baseline;font-size:.8rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.act-who .hp{font-family:var(--mono);text-transform:none;letter-spacing:0;font-weight:500}
+.act-do{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.act-do strong{font-family:var(--display);font-size:1.15rem}
+.act-do .verb{color:var(--muted);font-size:.9rem}
+.grow{flex:1}
+.abil{font-size:.74rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--ink);background:var(--bg)}
+.lev{display:flex;gap:6px;align-items:center;font-size:.85rem;cursor:pointer}
+.lev input{accent-color:var(--accent);width:16px;height:16px}
+.roster{display:flex;flex-direction:column;gap:6px}
+.roster .mon-head{border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.roster .benched{border-style:dashed;color:var(--muted)}
+.roster .fainted{opacity:.55;background:var(--flat-bg)}
+.roster .fainted > span:first-child{text-decoration:line-through}
+.faint-btn{font-size:.78rem;padding:4px 10px}
+.faint-btn[aria-pressed="true"]{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:600}
+details summary{cursor:pointer;font-weight:600;padding:4px 0}
+details .mons{display:flex;flex-direction:column;gap:16px;margin:8px 0}
+.hpl{font-size:.78rem;color:var(--muted);font-weight:500}
+.hpi{font:inherit;font-family:var(--mono);font-size:.85rem;width:4.2em;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.seg.sm button{padding:4px 10px;font-size:.8rem}
+td.kind{color:var(--muted);font-size:.82rem}
+.ask{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:14px}
+.chat-log{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto}
+.chat-log:empty{display:none}
+.msg{white-space:pre-wrap;font-size:.92rem;line-height:1.45;padding:8px 12px;border-radius:12px;max-width:85%}
+.msg.user{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:4px}
+.msg.assistant{align-self:flex-start;background:var(--flat-bg);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.err{border-color:var(--bad);color:var(--bad)}
+.chat-form{display:flex;flex-direction:column;gap:6px}
+.chat-form textarea{font:inherit;font-size:.92rem;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical;min-height:2.6em}
+.chat-form textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.chat-form .actions{align-items:center}
+.note{color:var(--muted);font-size:.85rem;margin:0;max-width:75ch}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Team Type Matchup Calculator</h1>
+    <p class="lede">Enter the three Pokémon you are facing. The sheet ranks every attacking type by how hard it hits the whole team. Covers Pokémon #001 to #649 (Generations 1–5).</p>
+  </header>
+
+  <section class="bar" aria-label="Controls">
+    <div class="seg" role="group" aria-label="Type chart">
+      <button type="button" id="mode-gen5" aria-pressed="true">Gen 5 type chart</button>
+      <button type="button" id="mode-modern" aria-pressed="false">Modern chart (Fairy)</button>
+    </div>
+    <div class="actions">
+      <button type="button" id="btn-cov" disabled title="Ask Claude which off-type attacks these opponents usually carry">Look up coverage moves</button>
+      <button type="button" id="btn-random">Random team</button>
+      <button type="button" id="btn-clear">Clear</button>
+    </div>
+  </section>
+  <p class="note" id="cov-status" aria-live="polite"></p>
+
+  <section class="slots" aria-label="Opposing team">
+    <div class="slot"><label for="p0">Opponent 1</label><input id="p0" list="dex" autocomplete="off" spellcheck="false" placeholder="Type a name"><div class="info" id="i0"></div></div>
+    <div class="slot"><label for="p1">Opponent 2</label><input id="p1" list="dex" autocomplete="off" spellcheck="false" placeholder="Type a name"><div class="info" id="i1"></div></div>
+    <div class="slot"><label for="p2">Opponent 3</label><input id="p2" list="dex" autocomplete="off" spellcheck="false" placeholder="Type a name"><div class="info" id="i2"></div></div>
+  </section>
+  <datalist id="dex"></datalist>
+
+  <section class="verdict" id="verdict" aria-live="polite"></section>
+
+  <section class="panel" id="mine">
+    <h2>Your team's moves <span class="opt">optional</span></h2>
+    <p class="note">Paste or upload screenshots of your team: the 3 Pokémon in your rotation plus 1 on the bench, with their moves (summary screens, the party screen or the battle move menu). Claude reads them, and the sheet picks the one best action for this turn: which Pokémon to rotate to the front and whether it should attack, boost, use a status move, heal, or switch out for the bench.</p>
+    <div class="paste" id="paste-zone" tabindex="0" role="button" aria-describedby="paste-hint">
+      <strong>Paste a screenshot here</strong>
+      <span id="paste-hint">Click this box, then press Ctrl+V (⌘V on Mac). You can also drop image files on it.</span>
+    </div>
+    <div class="actions">
+      <button type="button" id="btn-shots" disabled>Choose files instead</button>
+      <button type="button" id="btn-forget" hidden>Remove my team</button>
+      <input type="file" id="shots" accept="image/*" multiple hidden>
+    </div>
+    <p class="note" id="shot-status" aria-live="polite"></p>
+    <div id="mine-out"></div>
+    <div id="ask-wrap" class="ask" hidden>
+      <div class="actions"><button type="button" id="btn-ask">Ask Claude for a second opinion</button></div>
+      <p class="note">Claude also weighs abilities, Speed, items and likely opposing moves, which the rules do not. Ask for a second opinion, or just chat about the fight below. Press Enter to send, Shift+Enter for a new line.</p>
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <form id="chat-form" class="chat-form">
+        <label for="chat-input" class="hpl">Chat with Claude about this fight</label>
+        <textarea id="chat-input" rows="2" placeholder="For example: their Garchomp is holding a Choice Scarf and used Earthquake last turn. What now?"></textarea>
+        <div class="actions"><button type="submit" id="chat-send">Send</button><button type="button" id="chat-clear" hidden>Start over</button><span class="note" id="chat-note"></span></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Every attacking type, ranked</h2>
+    <div class="scroll"><table id="matrix"></table></div>
+    <p class="note">Ranking: most opponents hit super effectively first, then fewest opponents that resist or are immune, then highest total damage multiplier. Levitate is counted: Ground moves have no effect on Pokémon that have it. Other abilities (Flash Fire, Water Absorb, Wonder Guard and so on), held items and weather are not counted.</p>
+  </section>
+</main>
+
+<script>
+const T={No:'Normal',Fi:'Fire',Wa:'Water',El:'Electric',Gr:'Grass',Ic:'Ice',Fg:'Fighting',Po:'Poison',Gd:'Ground',Fl:'Flying',Ps:'Psychic',Bu:'Bug',Ro:'Rock',Gh:'Ghost',Dr:'Dragon',Da:'Dark',St:'Steel',Fa:'Fairy'};
+const COLOR={No:'#7a7a5c',Fi:'#d9622b',Wa:'#3f7fd9',El:'#b8930a',Gr:'#4a9a3a',Ic:'#3c9c9c',Fg:'#b03a30',Po:'#8e3f93',Gd:'#a8843a',Fl:'#7667c9',Ps:'#d9457a',Bu:'#7f8f1a',Ro:'#96843a',Gh:'#5f4a8a',Dr:'#5a35d6',Da:'#5a4a40',St:'#6f7f96',Fa:'#c8609a'};
+// Attacker -> s: super effective, h: not very effective, z: no effect (modern chart)
+const CHART={
+ No:{s:'',h:'RoSt',z:'Gh'},
+ Fi:{s:'GrIcBuSt',h:'FiWaRoDr',z:''},
+ Wa:{s:'FiGdRo',h:'WaGrDr',z:''},
+ El:{s:'WaFl',h:'ElGrDr',z:'Gd'},
+ Gr:{s:'WaGdRo',h:'FiGrPoFlBuDrSt',z:''},
+ Ic:{s:'GrGdFlDr',h:'FiWaIcSt',z:''},
+ Fg:{s:'NoIcRoDaSt',h:'PoFlPsBuFa',z:'Gh'},
+ Po:{s:'GrFa',h:'PoGdRoGh',z:'St'},
+ Gd:{s:'FiElPoRoSt',h:'GrBu',z:'Fl'},
+ Fl:{s:'GrFgBu',h:'ElRoSt',z:''},
+ Ps:{s:'FgPo',h:'PsSt',z:'Da'},
+ Bu:{s:'GrPsDa',h:'FiFgPoFlGhStFa',z:''},
+ Ro:{s:'FiIcFlBu',h:'FgGdSt',z:''},
+ Gh:{s:'PsGh',h:'Da',z:'No'},
+ Dr:{s:'Dr',h:'St',z:'Fa'},
+ Da:{s:'PsGh',h:'FgDaFa',z:''},
+ St:{s:'IcRoFa',h:'FiWaElSt',z:''},
+ Fa:{s:'FgDrDa',h:'FiPoSt',z:''}
+};
+// National Dex order, #001-#649, Gen 5 typings
+const DEX="Bulbasaur:GrPo,Ivysaur:GrPo,Venusaur:GrPo,Charmander:Fi,Charmeleon:Fi,Charizard:FiFl,Squirtle:Wa,Wartortle:Wa,Blastoise:Wa,Caterpie:Bu,Metapod:Bu,Butterfree:BuFl,Weedle:BuPo,Kakuna:BuPo,Beedrill:BuPo,Pidgey:NoFl,Pidgeotto:NoFl,Pidgeot:NoFl,Rattata:No,Raticate:No,Spearow:NoFl,Fearow:NoFl,Ekans:Po,Arbok:Po,Pikachu:El,Raichu:El,Sandshrew:Gd,Sandslash:Gd,Nidoran♀:Po,Nidorina:Po,Nidoqueen:PoGd,Nidoran♂:Po,Nidorino:Po,Nidoking:PoGd,Clefairy:No,Clefable:No,Vulpix:Fi,Ninetales:Fi,Jigglypuff:No,Wigglytuff:No,Zubat:PoFl,Golbat:PoFl,Oddish:GrPo,Gloom:GrPo,Vileplume:GrPo,Paras:BuGr,Parasect:BuGr,Venonat:BuPo,Venomoth:BuPo,Diglett:Gd,Dugtrio:Gd,Meowth:No,Persian:No,Psyduck:Wa,Golduck:Wa,Mankey:Fg,Primeape:Fg,Growlithe:Fi,Arcanine:Fi,Poliwag:Wa,Poliwhirl:Wa,Poliwrath:WaFg,Abra:Ps,Kadabra:Ps,Alakazam:Ps,Machop:Fg,Machoke:Fg,Machamp:Fg,Bellsprout:GrPo,Weepinbell:GrPo,Victreebel:GrPo,Tentacool:WaPo,Tentacruel:WaPo,Geodude:RoGd,Graveler:RoGd,Golem:RoGd,Ponyta:Fi,Rapidash:Fi,Slowpoke:WaPs,Slowbro:WaPs,Magnemite:ElSt,Magneton:ElSt,Farfetch'd:NoFl,Doduo:NoFl,Dodrio:NoFl,Seel:Wa,Dewgong:WaIc,Grimer:Po,Muk:Po,Shellder:Wa,Cloyster:WaIc,Gastly:GhPo,Haunter:GhPo,Gengar:GhPo,Onix:RoGd,Drowzee:Ps,Hypno:Ps,Krabby:Wa,Kingler:Wa,Voltorb:El,Electrode:El,Exeggcute:GrPs,Exeggutor:GrPs,Cubone:Gd,Marowak:Gd,Hitmonlee:Fg,Hitmonchan:Fg,Lickitung:No,Koffing:Po,Weezing:Po,Rhyhorn:GdRo,Rhydon:GdRo,Chansey:No,Tangela:Gr,Kangaskhan:No,Horsea:Wa,Seadra:Wa,Goldeen:Wa,Seaking:Wa,Staryu:Wa,Starmie:WaPs,Mr. Mime:Ps,Scyther:BuFl,Jynx:IcPs,Electabuzz:El,Magmar:Fi,Pinsir:Bu,Tauros:No,Magikarp:Wa,Gyarados:WaFl,Lapras:WaIc,Ditto:No,Eevee:No,Vaporeon:Wa,Jolteon:El,Flareon:Fi,Porygon:No,Omanyte:RoWa,Omastar:RoWa,Kabuto:RoWa,Kabutops:RoWa,Aerodactyl:RoFl,Snorlax:No,Articuno:IcFl,Zapdos:ElFl,Moltres:FiFl,Dratini:Dr,Dragonair:Dr,Dragonite:DrFl,Mewtwo:Ps,Mew:Ps,"
++"Chikorita:Gr,Bayleef:Gr,Meganium:Gr,Cyndaquil:Fi,Quilava:Fi,Typhlosion:Fi,Totodile:Wa,Croconaw:Wa,Feraligatr:Wa,Sentret:No,Furret:No,Hoothoot:NoFl,Noctowl:NoFl,Ledyba:BuFl,Ledian:BuFl,Spinarak:BuPo,Ariados:BuPo,Crobat:PoFl,Chinchou:WaEl,Lanturn:WaEl,Pichu:El,Cleffa:No,Igglybuff:No,Togepi:No,Togetic:NoFl,Natu:PsFl,Xatu:PsFl,Mareep:El,Flaaffy:El,Ampharos:El,Bellossom:Gr,Marill:Wa,Azumarill:Wa,Sudowoodo:Ro,Politoed:Wa,Hoppip:GrFl,Skiploom:GrFl,Jumpluff:GrFl,Aipom:No,Sunkern:Gr,Sunflora:Gr,Yanma:BuFl,Wooper:WaGd,Quagsire:WaGd,Espeon:Ps,Umbreon:Da,Murkrow:DaFl,Slowking:WaPs,Misdreavus:Gh,Unown:Ps,Wobbuffet:Ps,Girafarig:NoPs,Pineco:Bu,Forretress:BuSt,Dunsparce:No,Gligar:GdFl,Steelix:StGd,Snubbull:No,Granbull:No,Qwilfish:WaPo,Scizor:BuSt,Shuckle:BuRo,Heracross:BuFg,Sneasel:DaIc,Teddiursa:No,Ursaring:No,Slugma:Fi,Magcargo:FiRo,Swinub:IcGd,Piloswine:IcGd,Corsola:WaRo,Remoraid:Wa,Octillery:Wa,Delibird:IcFl,Mantine:WaFl,Skarmory:StFl,Houndour:DaFi,Houndoom:DaFi,Kingdra:WaDr,Phanpy:Gd,Donphan:Gd,Porygon2:No,Stantler:No,Smeargle:No,Tyrogue:Fg,Hitmontop:Fg,Smoochum:IcPs,Elekid:El,Magby:Fi,Miltank:No,Blissey:No,Raikou:El,Entei:Fi,Suicune:Wa,Larvitar:RoGd,Pupitar:RoGd,Tyranitar:RoDa,Lugia:PsFl,Ho-Oh:FiFl,Celebi:PsGr,"
++"Treecko:Gr,Grovyle:Gr,Sceptile:Gr,Torchic:Fi,Combusken:FiFg,Blaziken:FiFg,Mudkip:Wa,Marshtomp:WaGd,Swampert:WaGd,Poochyena:Da,Mightyena:Da,Zigzagoon:No,Linoone:No,Wurmple:Bu,Silcoon:Bu,Beautifly:BuFl,Cascoon:Bu,Dustox:BuPo,Lotad:WaGr,Lombre:WaGr,Ludicolo:WaGr,Seedot:Gr,Nuzleaf:GrDa,Shiftry:GrDa,Taillow:NoFl,Swellow:NoFl,Wingull:WaFl,Pelipper:WaFl,Ralts:Ps,Kirlia:Ps,Gardevoir:Ps,Surskit:BuWa,Masquerain:BuFl,Shroomish:Gr,Breloom:GrFg,Slakoth:No,Vigoroth:No,Slaking:No,Nincada:BuGd,Ninjask:BuFl,Shedinja:BuGh,Whismur:No,Loudred:No,Exploud:No,Makuhita:Fg,Hariyama:Fg,Azurill:No,Nosepass:Ro,Skitty:No,Delcatty:No,Sableye:DaGh,Mawile:St,Aron:StRo,Lairon:StRo,Aggron:StRo,Meditite:FgPs,Medicham:FgPs,Electrike:El,Manectric:El,Plusle:El,Minun:El,Volbeat:Bu,Illumise:Bu,Roselia:GrPo,Gulpin:Po,Swalot:Po,Carvanha:WaDa,Sharpedo:WaDa,Wailmer:Wa,Wailord:Wa,Numel:FiGd,Camerupt:FiGd,Torkoal:Fi,Spoink:Ps,Grumpig:Ps,Spinda:No,Trapinch:Gd,Vibrava:GdDr,Flygon:GdDr,Cacnea:Gr,Cacturne:GrDa,Swablu:NoFl,Altaria:DrFl,Zangoose:No,Seviper:Po,Lunatone:RoPs,Solrock:RoPs,Barboach:WaGd,Whiscash:WaGd,Corphish:Wa,Crawdaunt:WaDa,Baltoy:GdPs,Claydol:GdPs,Lileep:RoGr,Cradily:RoGr,Anorith:RoBu,Armaldo:RoBu,Feebas:Wa,Milotic:Wa,Castform:No,Kecleon:No,Shuppet:Gh,Banette:Gh,Duskull:Gh,Dusclops:Gh,Tropius:GrFl,Chimecho:Ps,Absol:Da,Wynaut:Ps,Snorunt:Ic,Glalie:Ic,Spheal:IcWa,Sealeo:IcWa,Walrein:IcWa,Clamperl:Wa,Huntail:Wa,Gorebyss:Wa,Relicanth:WaRo,Luvdisc:Wa,Bagon:Dr,Shelgon:Dr,Salamence:DrFl,Beldum:StPs,Metang:StPs,Metagross:StPs,Regirock:Ro,Regice:Ic,Registeel:St,Latias:DrPs,Latios:DrPs,Kyogre:Wa,Groudon:Gd,Rayquaza:DrFl,Jirachi:StPs,Deoxys:Ps,"
++"Turtwig:Gr,Grotle:Gr,Torterra:GrGd,Chimchar:Fi,Monferno:FiFg,Infernape:FiFg,Piplup:Wa,Prinplup:Wa,Empoleon:WaSt,Starly:NoFl,Staravia:NoFl,Staraptor:NoFl,Bidoof:No,Bibarel:NoWa,Kricketot:Bu,Kricketune:Bu,Shinx:El,Luxio:El,Luxray:El,Budew:GrPo,Roserade:GrPo,Cranidos:Ro,Rampardos:Ro,Shieldon:RoSt,Bastiodon:RoSt,Burmy:Bu,Wormadam:BuGr,Mothim:BuFl,Combee:BuFl,Vespiquen:BuFl,Pachirisu:El,Buizel:Wa,Floatzel:Wa,Cherubi:Gr,Cherrim:Gr,Shellos:Wa,Gastrodon:WaGd,Ambipom:No,Drifloon:GhFl,Drifblim:GhFl,Buneary:No,Lopunny:No,Mismagius:Gh,Honchkrow:DaFl,Glameow:No,Purugly:No,Chingling:Ps,Stunky:PoDa,Skuntank:PoDa,Bronzor:StPs,Bronzong:StPs,Bonsly:Ro,Mime Jr.:Ps,Happiny:No,Chatot:NoFl,Spiritomb:GhDa,Gible:DrGd,Gabite:DrGd,Garchomp:DrGd,Munchlax:No,Riolu:Fg,Lucario:FgSt,Hippopotas:Gd,Hippowdon:Gd,Skorupi:PoBu,Drapion:PoDa,Croagunk:PoFg,Toxicroak:PoFg,Carnivine:Gr,Finneon:Wa,Lumineon:Wa,Mantyke:WaFl,Snover:GrIc,Abomasnow:GrIc,Weavile:DaIc,Magnezone:ElSt,Lickilicky:No,Rhyperior:GdRo,Tangrowth:Gr,Electivire:El,Magmortar:Fi,Togekiss:NoFl,Yanmega:BuFl,Leafeon:Gr,Glaceon:Ic,Gliscor:GdFl,Mamoswine:IcGd,Porygon-Z:No,Gallade:PsFg,Probopass:RoSt,Dusknoir:Gh,Froslass:IcGh,Rotom:ElGh,Uxie:Ps,Mesprit:Ps,Azelf:Ps,Dialga:StDr,Palkia:WaDr,Heatran:FiSt,Regigigas:No,Giratina:GhDr,Cresselia:Ps,Phione:Wa,Manaphy:Wa,Darkrai:Da,Shaymin:Gr,Arceus:No,"
++"Victini:PsFi,Snivy:Gr,Servine:Gr,Serperior:Gr,Tepig:Fi,Pignite:FiFg,Emboar:FiFg,Oshawott:Wa,Dewott:Wa,Samurott:Wa,Patrat:No,Watchog:No,Lillipup:No,Herdier:No,Stoutland:No,Purrloin:Da,Liepard:Da,Pansage:Gr,Simisage:Gr,Pansear:Fi,Simisear:Fi,Panpour:Wa,Simipour:Wa,Munna:Ps,Musharna:Ps,Pidove:NoFl,Tranquill:NoFl,Unfezant:NoFl,Blitzle:El,Zebstrika:El,Roggenrola:Ro,Boldore:Ro,Gigalith:Ro,Woobat:PsFl,Swoobat:PsFl,Drilbur:Gd,Excadrill:GdSt,Audino:No,Timburr:Fg,Gurdurr:Fg,Conkeldurr:Fg,Tympole:Wa,Palpitoad:WaGd,Seismitoad:WaGd,Throh:Fg,Sawk:Fg,Sewaddle:BuGr,Swadloon:BuGr,Leavanny:BuGr,Venipede:BuPo,Whirlipede:BuPo,Scolipede:BuPo,Cottonee:Gr,Whimsicott:Gr,Petilil:Gr,Lilligant:Gr,Basculin:Wa,Sandile:GdDa,Krokorok:GdDa,Krookodile:GdDa,Darumaka:Fi,Darmanitan:Fi,Maractus:Gr,Dwebble:BuRo,Crustle:BuRo,Scraggy:DaFg,Scrafty:DaFg,Sigilyph:PsFl,Yamask:Gh,Cofagrigus:Gh,Tirtouga:WaRo,Carracosta:WaRo,Archen:RoFl,Archeops:RoFl,Trubbish:Po,Garbodor:Po,Zorua:Da,Zoroark:Da,Minccino:No,Cinccino:No,Gothita:Ps,Gothorita:Ps,Gothitelle:Ps,Solosis:Ps,Duosion:Ps,Reuniclus:Ps,Ducklett:WaFl,Swanna:WaFl,Vanillite:Ic,Vanillish:Ic,Vanilluxe:Ic,Deerling:NoGr,Sawsbuck:NoGr,Emolga:ElFl,Karrablast:Bu,Escavalier:BuSt,Foongus:GrPo,Amoonguss:GrPo,Frillish:WaGh,Jellicent:WaGh,Alomomola:Wa,Joltik:BuEl,Galvantula:BuEl,Ferroseed:GrSt,Ferrothorn:GrSt,Klink:St,Klang:St,Klinklang:St,Tynamo:El,Eelektrik:El,Eelektross:El,Elgyem:Ps,Beheeyem:Ps,Litwick:GhFi,Lampent:GhFi,Chandelure:GhFi,Axew:Dr,Fraxure:Dr,Haxorus:Dr,Cubchoo:Ic,Beartic:Ic,Cryogonal:Ic,Shelmet:Bu,Accelgor:Bu,Stunfisk:GdEl,Mienfoo:Fg,Mienshao:Fg,Druddigon:Dr,Golett:GdGh,Golurk:GdGh,Pawniard:DaSt,Bisharp:DaSt,Bouffalant:No,Rufflet:NoFl,Braviary:NoFl,Vullaby:DaFl,Mandibuzz:DaFl,Heatmor:Fi,Durant:BuSt,Deino:DaDr,Zweilous:DaDr,Hydreigon:DaDr,Larvesta:BuFi,Volcarona:BuFi,Cobalion:StFg,Terrakion:RoFg,Virizion:GrFg,Tornadus:Fl,Thundurus:ElFl,Reshiram:DrFi,Zekrom:DrEl,Landorus:GdFl,Kyurem:DrIc,Keldeo:WaFg,Meloetta:NoPs,Genesect:BuSt";
+// Alternate forms whose typing differs from the base form: name:types:dex number
+const FORMS="Wormadam (Sandy):BuGd:413,Wormadam (Trash):BuSt:413,Rotom (Heat):ElFi:479,Rotom (Wash):ElWa:479,Rotom (Frost):ElIc:479,Rotom (Fan):ElFl:479,Rotom (Mow):ElGr:479,Shaymin (Sky):GrFl:492,Darmanitan (Zen):FiPs:555,Meloetta (Pirouette):NoFg:648";
+// Typings that changed when Fairy was introduced (used only with the modern chart)
+const FAIRY={Clefairy:'Fa',Clefable:'Fa',Jigglypuff:'NoFa',Wigglytuff:'NoFa','Mr. Mime':'PsFa',Cleffa:'Fa',Igglybuff:'NoFa',Togepi:'Fa',Togetic:'FaFl',Marill:'WaFa',Azumarill:'WaFa',Snubbull:'Fa',Granbull:'Fa',Ralts:'PsFa',Kirlia:'PsFa',Gardevoir:'PsFa',Azurill:'NoFa',Mawile:'StFa','Mime Jr.':'PsFa',Togekiss:'FaFl',Cottonee:'GrFa',Whimsicott:'GrFa'};
+
+const MONS=DEX.split(',').map((e,i)=>{const [name,t]=e.split(':');return {name,t,n:i+1};})
+  .concat(FORMS.split(',').map(e=>{const [name,t,n]=e.split(':');return {name,t,n:+n};}));
+const norm=s=>s.toLowerCase().replace(/[^a-z0-9♀♂]/g,'');
+const BYNAME=new Map(MONS.map(m=>[norm(m.name),m]));
+BYNAME.set('nidoranf',BYNAME.get(norm('Nidoran♀')));BYNAME.set('nidoranm',BYNAME.get(norm('Nidoran♂')));
+
+const split=t=>t.match(/../g);
+function typesOf(mon,mode){return split(mode==='modern'&&FAIRY[mon.name]?FAIRY[mon.name]:mon.t);}
+function mult(att,defs,mode){
+  let m=1;const c=CHART[att];
+  for(const d of defs){
+    if(c.z.includes(d))return 0;
+    if(c.s.includes(d))m*=2;
+    else if(c.h.includes(d)||(mode==='gen5'&&d==='St'&&(att==='Gh'||att==='Da')))m/=2;
+  }
+  return m;
+}
+// Levitate: Ground-type moves miss, and Spikes / Toxic Spikes do not touch it (Gen 5 abilities)
+const LEVITATE=new Set(['Gastly','Haunter','Gengar','Koffing','Weezing','Misdreavus','Unown','Vibrava','Flygon','Lunatone','Solrock','Baltoy','Claydol','Duskull','Chimecho','Latias','Latios','Chingling','Bronzor','Bronzong','Carnivine','Mismagius','Rotom','Rotom (Heat)','Rotom (Wash)','Rotom (Frost)','Rotom (Fan)','Rotom (Mow)','Uxie','Mesprit','Azelf','Cresselia','Tynamo','Eelektrik','Eelektross','Cryogonal','Hydreigon']);
+const LEV_MAYBE={Bronzor:'Heatproof',Bronzong:'Heatproof'}; // species that may have another ability instead
+// Multiplier of an attacking type against a Pokémon, counting Levitate (mon.lev)
+function hit(att,mon,mode){return att==='Gd'&&mon.lev?0:mult(att,typesOf(mon,mode),mode);}
+const attackers=mode=>Object.keys(T).filter(t=>mode==='modern'||t!=='Fa');
+function analyze(team,mode){
+  return attackers(mode).map(a=>{
+    const m=team.map(p=>hit(a,p,mode));
+    return {a,m,se:m.filter(x=>x>1).length,bad:m.filter(x=>x<1).length,sum:m.reduce((x,y)=>x+y,0)};
+  }).sort((x,y)=>y.se-x.se||x.bad-y.bad||y.sum-x.sum);
+}
+
+// ---------- Your team: cleaning screenshot data ----------
+const TCODE=Object.fromEntries(Object.entries(T).map(([k,v])=>[v.toLowerCase(),k]));
+const tc=x=>T[x]?x:(TCODE[String(x||'').toLowerCase()]||null);
+const EFFECTS=['setup','status','hazard','recovery','protect','support','other'];
+const STATN={atk:'Attack',def:'Defense',spa:'Sp. Atk',spd:'Sp. Def',spe:'Speed',acc:'accuracy',eva:'evasion'};
+const SETUP_FALLBACK={'swords dance':{atk:2},'dragon dance':{atk:1,spe:1},'bulk up':{atk:1,def:1},'curse':{atk:1,def:1},'hone claws':{atk:1,acc:1},'shift gear':{atk:1,spe:2},'coil':{atk:1,def:1,acc:1},'howl':{atk:1},'belly drum':{atk:6},'nasty plot':{spa:2},'calm mind':{spa:1,spd:1},'quiver dance':{spa:1,spd:1,spe:1},'tail glow':{spa:3},'shell smash':{atk:2,spa:2,spe:2},'work up':{atk:1,spa:1},'growth':{atk:1,spa:1},'agility':{spe:2},'rock polish':{spe:2},'autotomize':{spe:2}};
+const INFLICTS=['sleep','paralysis','burn','toxic','poison','confusion'];
+function cleanMove(mv){
+  const name=String(mv.name||'?').slice(0,40),n=name.toLowerCase();
+  let cat=String(mv.category||mv.cat||'').toLowerCase();if(!['physical','special','status'].includes(cat))cat='status';
+  let effect=String(mv.effect||'').toLowerCase();
+  if(cat!=='status')effect='attack';else if(!EFFECTS.includes(effect))effect=SETUP_FALLBACK[n]?'setup':'other';
+  let boosts={};const b=mv.boosts;
+  if(Array.isArray(b))b.forEach(k=>{if(STATN[k])boosts[k]=(boosts[k]||0)+1;});
+  else if(b&&typeof b==='object')for(const k in b)if(STATN[k]&&+b[k])boosts[k]=Math.max(-6,Math.min(6,Math.round(+b[k])));
+  if(effect==='setup'&&!Object.keys(boosts).length)boosts=SETUP_FALLBACK[n]||{atk:1,spa:1};
+  let inflicts=String(mv.inflicts||'').toLowerCase();if(!INFLICTS.includes(inflicts))inflicts=null;
+  if(effect==='status'&&!inflicts&&n!=='leech seed')effect='other';
+  const num=(v,lo,hi)=>typeof v==='number'&&isFinite(v)?Math.max(lo,Math.min(hi,Math.round(v))):null;
+  return {name,type:tc(mv.type),cat,power:num(mv.power,1,250),acc:num(mv.accuracy??mv.acc,1,100),effect,boosts,inflicts};
+}
+function cleanTeam(arr){
+  const team=(Array.isArray(arr)?arr:[]).slice(0,4).map(p=>{
+    const name=String(p.pokemon||p.name||'Unknown').slice(0,30);
+    const hpRaw=p.hp_percent??p.hp;
+    return {name,
+      types:(Array.isArray(p.types)?p.types:[]).map(tc).filter(Boolean).slice(0,2),
+      hp:typeof hpRaw==='number'&&isFinite(hpRaw)?Math.max(1,Math.min(100,Math.round(hpRaw))):100,
+      bench:p.bench===true,
+      fainted:p.fainted===true,
+      ability:typeof p.ability==='string'?p.ability.slice(0,30):null,
+      atk:typeof (p.base_atk??p.atk)==='number'?(p.base_atk??p.atk):null,
+      spa:typeof (p.base_spa??p.spa)==='number'?(p.base_spa??p.spa):null,
+      moves:(Array.isArray(p.moves)?p.moves:[]).slice(0,4).map(cleanMove)};
+  }).filter(p=>p.moves.length);
+  team.forEach(p=>{const e=BYNAME.get(norm(p.name));p.lev=p.ability?/levitate/i.test(p.ability):!!(e&&LEVITATE.has(e.name));});
+  setBench(team,team.findIndex(p=>p.bench));
+  return team;
+}
+function setBench(team,i){
+  team.forEach(p=>p.bench=false);
+  if(team.length===4)team[i>=0&&i<4?i:3].bench=true;
+}
+
+// ---------- Your team: turn planner ----------
+const fmtX=m=>m===0.5?'½×':m===0.25?'¼×':m+'×';
+const joinList=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1];
+const POWDER=/^(spore|sleep powder|stun spore|poison powder)$/;
+const SCREENS=/^(reflect|light screen|safeguard)$/,REDIRECT=/^(follow me|rage powder)$/,SPEEDCTL=/^(tailwind|trick room)$/,GUARDS=/^(wide guard|quick guard)$/;
+function myTypes(p,mode){const e=BYNAME.get(norm(p.name));return e?typesOf(e,mode):p.types;}
+// Coverage moves (off-type attacks such as Alakazam's Energy Ball) count at 2/3 weight, since they lack STAB.
+const COV_W=2/3;
+// Each opponent's most dangerous attack type against p: its STAB types plus its known coverage moves (o.cov).
+// m = weighted threat used for scoring, raw = the actual type multiplier, cov = coverage move name (null for STAB).
+function threatsTo(p,opps,mode){
+  const mt=myTypes(p,mode);
+  return opps.map(o=>{
+    let best={t:null,m:-1,raw:-1,cov:null};
+    const tryT=(t,k,mv)=>{const raw=t==='Gd'&&p.lev?0:mult(t,mt,mode),m=raw*k;if(m>best.m||(m===best.m&&raw>best.raw))best={t,m,raw,cov:mv||null};};
+    for(const t of typesOf(o,mode))tryT(t,1);
+    for(const c of (o.cov||[]))if(T[c.type]&&!(mode==='gen5'&&c.type==='Fa'))tryT(c.type,COV_W,c.move);
+    // also keep the scariest raw hit for warnings
+    let scary=null;
+    for(const c of (o.cov||[])){if(!T[c.type]||(mode==='gen5'&&c.type==='Fa'))continue;const raw=c.type==='Gd'&&p.lev?0:mult(c.type,mt,mode);if(raw>=4&&(!scary||raw>scary.raw))scary={t:c.type,raw,cov:c.move};}
+    return {o,...best,scary};
+  });
+}
+const threatText=x=>x.cov?`${x.cov} (${T[x.t]} coverage)`:`${T[x.t]} STAB`;
+function atkScore(p,mv,o,mode){
+  if(mv.effect!=='attack'||!mv.type||(mode==='gen5'&&mv.type==='Fa'))return null;
+  const eff=hit(mv.type,o,mode),stab=myTypes(p,mode).includes(mv.type);
+  const st=mv.cat==='physical'?p.atk:p.spa,sf=st?Math.min(1.6,Math.max(.5,st/100)):1;
+  return {mv,o,eff,stab,score:(mv.power||60)*(stab?1.5:1)*eff*((mv.acc||100)/100)*sf};
+}
+function allAttacks(p,opps,mode){
+  const r=[];for(const mv of p.moves)for(const o of opps){const s=atkScore(p,mv,o,mode);if(s)r.push(s);}
+  return r.sort((a,b)=>b.score-a.score);
+}
+function statusBlock(mv,o,mode){ // '' when the status move works on o, otherwise the reason it fails
+  const ot=typesOf(o,mode),s=mv.inflicts,n=mv.name.toLowerCase();
+  if(n==='leech seed'&&ot.includes('Gr'))return 'Grass types are immune to Leech Seed';
+  if((s==='poison'||s==='toxic')&&(ot.includes('Po')||ot.includes('St')))return 'Poison and Steel types cannot be poisoned';
+  if(s==='burn'&&ot.includes('Fi'))return 'Fire types cannot be burned';
+  if(n==='thunder wave'&&ot.includes('Gd'))return 'Ground types are immune to Thunder Wave';
+  if(s==='paralysis'&&mode==='modern'&&ot.includes('El'))return 'Electric types cannot be paralyzed (Gen 6 onward)';
+  if(mode==='modern'&&POWDER.test(n)&&ot.includes('Gr'))return 'Grass types ignore powder moves (Gen 6 onward)';
+  return '';
+}
+function hazardHits(mv,opps,mode){ // [{o,pct}] damage on each switch-in
+  const n=mv.name.toLowerCase();
+  return opps.map(o=>{const ot=typesOf(o,mode);let pct=0;
+    if(n==='stealth rock')pct=12.5*mult('Ro',ot,mode);
+    else if(n==='spikes')pct=ot.includes('Fl')||o.lev?0:12.5;
+    else if(n==='toxic spikes')pct=(ot.includes('Fl')||o.lev||ot.includes('Po')||ot.includes('St'))?0:12.5;
+    return {o,pct};});
+}
+const boostText=b=>Object.entries(b).map(([k,v])=>`${v>0?'+':''}${v} ${STATN[k]}`).join(', ');
+const STATUS_RANK={sleep:6,paralysis:5,burn:4,toxic:4,poison:2,confusion:1};
+const STATUS_WHY={sleep:'puts it to sleep for several turns',paralysis:'cuts its Speed and can make it lose turns',burn:'halves its physical damage and chips it every turn',toxic:'wears it down harder every turn',poison:'chips it every turn',confusion:'can make it hit itself'};
+
+// Rotation Battle: each side has 3 Pokémon in rotation and 1 on the bench. At the start of a turn either side
+// may rotate any of its 3 to the front for free; only the two front Pokémon attack and get hit.
+// So one suggestion = which of your 3 to put in front + its action (or swapping the front one for the bench).
+// The opponent may rotate too, so each option is valued against every opponent, weighted toward the one in front.
+function planTurn(team,opps,mode,front){
+  if(!team||!team.length||!opps.length)return null;
+  // Fainted Pokémon are left out. If a rotation member has fainted, the bench Pokémon fills its spot.
+  let rot=team.filter(p=>!p.bench&&!p.fainted),bench=team.find(p=>p.bench&&!p.fainted)||null,filled=null;
+  if(bench&&rot.length<3){rot=[...rot,bench];filled=bench;bench=null;}
+  if(!rot.length)return {none:true};
+  const li=front?opps.indexOf(front):-1,lead=li>=0?opps[li]:null;
+  const w=opps.map((o,i)=>opps.length===1?1:li>=0?(i===li?0.6:0.4/(opps.length-1)):1/opps.length);
+  const blend=vals=>0.7*vals.reduce((s,v,i)=>s+v*w[i],0)+0.3*Math.min(...vals);
+  const riskOf=p=>{const th=threatsTo(p,opps,mode);return {th,exp:th.reduce((s,x,i)=>s+x.m*w[i],0),max:Math.max(...th.map(x=>x.raw)),
+    // knockout risk: any 4× hit (STAB or coverage), or a 2× hit when already below 70% HP
+    ko:th.some(x=>x.raw>=4||(x.scary&&x.scary.raw>=4)||(x.raw>=2&&p.hp<=70))};};
+  const safety=(p,r)=>1/(1+0.35*Math.max(0,r.exp-1)*(p.hp<=35?1.6:p.hp<=70?1.25:1))*(r.ko?(p.hp<=70?0.6:0.8):1);
+  const spread=vals=>opps.map((o,i)=>`${fmtX(vals[i])} on ${o.name}`);
+  const dangerNote=(p,r)=>{
+    const hits=[];
+    for(const x of r.th){if(x.raw>=2)hits.push({o:x.o,t:x.t,raw:x.raw,cov:x.cov});if(x.scary&&!(x.raw>=4))hits.push({o:x.o,...x.scary});}
+    hits.sort((a,b)=>b.raw-a.raw);
+    const anyCov=r.th.some(x=>x.o.cov&&x.o.cov.length);
+    if(!hits.length)return r.max<1?` ${p.name} resists every opposing STAB${anyCov?' and known coverage':''} type, so it is a safe front-runner.`:` Nothing they are known to carry is super effective on ${p.name}.`;
+    const x=hits[0],ko=x.raw>=4||p.hp<=70;
+    return ` Careful: ${x.o.name}'s ${threatText(x)} hits ${p.name} for ${fmtX(x.raw)}${x.o===lead?' and it is already in front':' if they rotate it in'}${ko?`, which could knock it out${p.hp<100?` at ${p.hp}% HP`:''}`:''}.`;
+  };
+  const C=[],bestOf=new Map();
+  const add=c=>{C.push(c);if(!bestOf.has(c.p)||bestOf.get(c.p)<c.score)bestOf.set(c.p,c.score);};
+  for(const p of [...rot,...(bench?[bench]:[])]){
+    const r=riskOf(p),sf=safety(p,r),isBench=p===bench;
+    const out=isBench?[]:C; // bench options are only used to value a switch
+    const push=c=>{if(isBench){if(!bestOf.has(p)||bestOf.get(p)<c.score)bestOf.set(p,c.score);}else add(c);};
+    for(const mv of p.moves){
+      if(mv.effect==='attack'){
+        const sc=opps.map(o=>atkScore(p,mv,o,mode));if(!sc[0])continue;
+        const effs=sc.map(x=>x.eff),stab=sc[0].stab,score=blend(sc.map(x=>x.score))*sf;
+        const head=lead?`${mv.name} hits ${lead.name} for ${fmtX(effs[li])}${stab?' with STAB':''} while it stays in front`+(opps.length>1?`; if they rotate: ${joinList(spread(effs).filter((_,i)=>i!==li))}.`:'.')
+          :`${mv.name}${stab?' (STAB)':''} does ${joinList(spread(effs))}, the best cover for whoever they put in front.`;
+        push({p,kind:'attack',mv,target:lead,score,why:head+dangerNote(p,r)});
+      }
+      else if(mv.effect==='setup'&&r.exp<=1&&!r.ko&&p.hp>=60){
+        const b=mv.boosts,wants=m=>(b.atk>0&&m.cat==='physical')||(b.spa>0&&m.cat==='special')||(!b.atk&&!b.spa);
+        let next=null;
+        for(const m2 of p.moves.filter(m=>m.effect==='attack'&&wants(m))){const sc=opps.map(o=>atkScore(p,m2,o,mode));if(!sc[0])continue;const v=blend(sc.map(x=>x.score));if(Math.min(...sc.map(x=>x.eff))>=0.5&&(!next||v>next.v))next={m2,v,sc};}
+        if(next){
+          const gain=Math.max(...Object.values(b))>=2?1.5:1.25;
+          push({p,kind:'move',mv,setup:true,score:next.v*gain*sf,why:`Nothing they are known to carry is super effective on ${p.name}, so boost in front (${boostText(b)}). Boosts stay when you rotate it out. Follow up with ${next.m2.name}: ${joinList(spread(next.sc.map(x=>x.eff)))}.`});
+        }
+      }
+      else if(mv.effect==='status'){
+        const vals=opps.map(o=>{
+          if(statusBlock(mv,o,mode))return 0;
+          const myBest=Math.max(0,...p.moves.map(m=>{const a=atkScore(p,m,o,mode);return a?a.eff:0;}));
+          const danger=rot.reduce((s,q)=>s+threatsTo(q,[o],mode)[0].m,0);
+          return (60+18*(STATUS_RANK[mv.inflicts]||2)+25*danger)*((mv.acc||100)/100)*(myBest>=2?0.5:1);
+        });
+        if(Math.max(...vals)<=0)continue;
+        const blocked=opps.filter(o=>statusBlock(mv,o,mode)).map(o=>o.name);
+        const w2=mv.inflicts?STATUS_WHY[mv.inflicts]:'drains its HP every turn';
+        const tgt=lead&&vals[li]>0?lead:null;
+        push({p,kind:'move',mv,target:tgt,score:blend(vals)*sf,why:`${mv.name} on their front Pokémon${tgt?` (${tgt.name} right now)`:''} ${w2}, which does more than ${p.name}'s attacks can here.${blocked.length?` It fails on ${joinList(blocked)}.`:''}`+dangerNote(p,r)});
+      }
+      else if(mv.effect==='hazard'){
+        const hits=hazardHits(mv,opps,mode).filter(x=>x.pct>0),tot=hits.reduce((s,x)=>s+x.pct,0);
+        if(tot>=37.5)push({p,kind:'move',mv,score:tot*0.7*sf,why:`It hurts their bench Pokémon when it switches in. Rotating does not trigger it, so it only pays off if they switch.`});
+      }
+      else if(mv.effect==='recovery'&&p.hp<=60){
+        push({p,kind:'move',mv,score:(p.hp<=35?230:110)*sf,why:`${p.name} is at ${p.hp}% HP. Healing in front keeps it in the fight.`+dangerNote(p,r)});
+      }
+      else if(SCREENS.test(mv.name.toLowerCase())&&mv.name.toLowerCase()!=='safeguard'||SPEEDCTL.test(mv.name.toLowerCase())){
+        const thr=rot.filter(q=>riskOf(q).exp>=2);
+        if(thr.length)push({p,kind:'move',mv,support:true,score:(90+30*thr.length)*sf,why:`${mv.name} covers your whole rotation for several turns, which helps ${joinList(thr.map(q=>q.name))}.`+dangerNote(p,r)});
+      }
+    }
+  }
+  // Swap the weakest of the three for the bench (only the front Pokémon can switch, so rotate it in first)
+  if(bench&&bestOf.has(bench)&&rot.length){
+    const weakest=rot.slice().sort((a,b)=>(bestOf.get(a)||0)-(bestOf.get(b)||0))[0];
+    const bR=riskOf(bench);
+    C.push({p:weakest,kind:'switch',score:bestOf.get(bench)*0.55,why:`${bench.name} matches up better than ${weakest.name}, which has the weakest options against this team.${bR.max<=1?` Nothing they are known to carry is super effective on ${bench.name}.`:''} Switching uses this turn.`});
+  }
+  if(!C.length){const p=rot[0];return {pick:{p,kind:'move',mv:p.moves[0],why:'None of your Pokémon in rotation has a move that works well here.'},bench,lead,filled};}
+  C.sort((a,b)=>b.score-a.score);
+  return {pick:C[0],bench,lead,filled};
+}
+
+if(typeof document!=='undefined'){
+  const $=id=>document.getElementById(id);
+  const inputs=[0,1,2].map(i=>$('p'+i));
+  let mode='gen5';
+  const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const chip=(t,cls='',extra='')=>`<span class="chip ${cls}" style="--c:${COLOR[t]}">${T[t]}${extra}</span>`;
+  const fmt=m=>m===0.5?'½×':m===0.25?'¼×':m+'×';
+  const cell=m=>`<span class="x ${m>=4?'gg':m>1?'g':m===0?'z':m<1?'b':''}">${fmt(m)}</span>`;
+  const list=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1];
+
+  const oppLev=[0,1,2].map(()=>({name:null,on:false}));
+  let front=-1; // slot index of the opponent's front Pokémon, -1 = not sure
+  // Known coverage moves per species, remembered between visits. Seeded with moves players have lost to.
+  let covStore={Alakazam:[{move:'Energy Ball',type:'Gr'},{move:'Focus Blast',type:'Fg'},{move:'Shadow Ball',type:'Gh'}]},autoCov=false;
+  try{const c=JSON.parse(localStorage.getItem('matchup-coverage'));if(c&&typeof c==='object'){if(c.store&&typeof c.store==='object')covStore={...covStore,...c.store};autoCov=c.auto===true;}}catch(e){}
+  const saveCov=()=>{try{localStorage.setItem('matchup-coverage',JSON.stringify({store:covStore,auto:autoCov}));}catch(e){}};
+  const covFor=e=>(covStore[e.name]||[]).filter(c=>T[c.type]&&!split(e.t).includes(c.type));
+  document.querySelector('.slots').addEventListener('click',e=>{
+    const d=e.target.closest('button[data-covdel]');
+    if(d){const [i,ci]=d.dataset.covdel.split(':').map(Number);const e2=BYNAME.get(norm(inputs[i].value.trim()));if(e2){const c=covFor(e2)[ci];covStore[e2.name]=(covStore[e2.name]||[]).filter(x=>x!==c);saveCov();render();}return;}
+    const b=e.target.closest('button[data-front]');if(!b)return;const i=+b.dataset.front;front=front===i?-1:i;render();});
+  document.querySelector('.slots').addEventListener('change',e=>{
+    if(e.target.dataset.covadd!==undefined){const i=+e.target.dataset.covadd,t=e.target.value,e2=BYNAME.get(norm(inputs[i].value.trim()));
+      if(t&&e2){const list=covStore[e2.name]||[];if(!list.some(c=>c.type===t))covStore[e2.name]=[...list,{move:'',type:t}];saveCov();render();}return;}const i=e.target.dataset.lev;if(i===undefined)return;oppLev[+i].on=e.target.checked;render();});
+  $('dex').innerHTML=MONS.map(m=>`<option value="${esc(m.name)}">`).join('');
+
+  function render(){
+    const picks=inputs.map((inp,i)=>{
+      const v=inp.value.trim();if(!v)return undefined;
+      const e=BYNAME.get(norm(v));if(!e)return null;
+      if(oppLev[i].name!==e.name)oppLev[i]={name:e.name,on:LEVITATE.has(e.name)};
+      return {...e,lev:oppLev[i].on,cov:covFor(e)};
+    });
+    picks.forEach((p,i)=>{
+      const el=$('i'+i);
+      if(p===undefined){el.innerHTML='<span class="dex">Empty slot</span>';return;}
+      if(p===null){el.innerHTML='<span class="err">No Gen 1–5 Pokémon by that name. Pick one from the suggestions.</span>';return;}
+      const ty=typesOf(p,mode);
+      const weak=attackers(mode).map(a=>[a,hit(a,p,mode)]).filter(x=>x[1]>1).sort((a,b)=>b[1]-a[1]);
+      const alt=LEV_MAYBE[p.name];
+      const lev=!LEVITATE.has(p.name)?'':alt?
+        `<label class="lev"><input type="checkbox" id="lev-${i}" data-lev="${i}" ${p.lev?'checked':''}> Levitate <span class="k">(could be ${alt} instead)</span></label>`:
+        `<div class="row"><span class="k">Ability</span><span class="abil">Levitate</span><span class="k">immune to Ground</span></div>`;
+      el.innerHTML=`<div class="row"><span class="dex">#${String(p.n).padStart(3,'0')}</span>${ty.map(t=>chip(t)).join('')}<span class="grow"></span><button type="button" class="front-btn" data-front="${i}" aria-pressed="${front===i}">${front===i?'In front':'Set as front'}</button></div>`+
+        `<div class="row"><span class="k">Weak to</span>${weak.length?weak.map(w=>chip(w[0],'sm',w[1]>=4?' <b>4×</b>':'')).join(''):'<span class="k">nothing</span>'}</div>`+lev+
+        `<div class="row cov"><span class="k">Coverage</span>${p.cov.map((c,ci)=>`<span class="chip sm" style="--c:${COLOR[c.type]}" title="${esc(T[c.type])} coverage">${esc(c.move||T[c.type])}<button type="button" class="x-del" data-covdel="${i}:${ci}" aria-label="Remove ${esc(c.move||T[c.type])}">×</button></span>`).join('')}`+
+        `<select class="cov-add" id="covadd-${i}" data-covadd="${i}" aria-label="Add a coverage move type for ${esc(p.name)}"><option value="">+ add type</option>${attackers(mode).filter(t=>!ty.includes(t)).map(t=>`<option value="${t}">${T[t]}</option>`).join('')}</select></div>`;
+    });
+    const team=picks.filter(Boolean);
+    if(front>=0&&!picks[front])front=-1;
+    try{localStorage.setItem('matchup-team',JSON.stringify({v:inputs.map(i=>i.value),mode,mine,front}));}catch(e){}
+    renderMine(team,front>=0?picks[front]:null);
+    const V=$('verdict'),M=$('matrix');
+    if(!team.length){
+      V.innerHTML='<span class="eyebrow">Best move type</span><p>Add at least one opponent above to get a recommendation.</p>';
+      M.innerHTML='';return;
+    }
+    const rows=analyze(team,mode),top=rows[0];
+    const tied=rows.filter(r=>r.se===top.se&&r.bad===top.bad&&r.sum===top.sum);
+    const names=f=>team.filter((p,i)=>f(top.m[i])).map((p,i)=>p.name);
+    const se=team.map((p,i)=>top.m[i]>1?`${p.name} (${fmt(top.m[i])})`:null).filter(Boolean);
+    const res=team.map((p,i)=>top.m[i]<1&&top.m[i]>0?`${p.name} (${fmt(top.m[i])})`:null).filter(Boolean);
+    const imm=names(m=>m===0),neu=names(m=>m===1);
+    let why=[];
+    if(se.length)why.push(`${T[top.a]} moves are super effective against ${list(se)}.`);
+    else why.push(`Nothing hits this team super effectively, so ${T[top.a]} is the safest choice.`);
+    if(neu.length)why.push(`Neutral damage on ${list(neu)}.`);
+    if(res.length)why.push(`Resisted by ${list(res)}.`);
+    if(imm.length)why.push(`No effect on ${list(imm)}.`);
+    if(se.length===team.length&&team.length>1)why.push('That covers the whole team.');
+    const next=rows.filter(r=>!tied.includes(r)).slice(0,3);
+    V.innerHTML=`<span class="eyebrow">Best move type${tied.length>1?'s (tied)':''} against ${team.length===3?'this team':team.length+' of 3 opponents'}</span>`+
+      `<div class="best">${tied.map(r=>chip(r.a,'big')).join('')}</div><p>${esc(why.join(' '))}</p>`+
+      `<div class="next"><span class="k">Next best</span>${next.map(r=>chip(r.a)).join('')}</div>`;
+    M.innerHTML=`<thead><tr><th>#</th><th>Move type</th>${team.map(p=>`<th class="m">${esc(p.name)}</th>`).join('')}<th>Summary</th></tr></thead><tbody>`+
+      rows.map((r,i)=>{
+        const parts=[];
+        if(r.se)parts.push(r.se+' super effective');
+        const rs=r.m.filter(x=>x<1&&x>0).length,im=r.m.filter(x=>x===0).length;
+        if(rs)parts.push(rs+' resisted');
+        if(im)parts.push(im+' immune');
+        return `<tr class="${tied.includes(r)?'top':''}"><td class="rank">${i+1}</td><td>${chip(r.a)}</td>${r.m.map(m=>`<td class="m">${cell(m)}</td>`).join('')}<td class="sum">${parts.join(', ')||'all neutral'}</td></tr>`;
+      }).join('')+'</tbody>';
+  }
+  // ---- Your team, read from screenshots ----
+  let mine=null,lastOpps=[],lastFront=null;
+  function moveCells(p,mv,opps){
+    if(mv.effect==='attack'){
+      const ok=mv.type&&!(mode==='gen5'&&mv.type==='Fa');
+      return opps.map(o=>`<td class="m">${ok?cell(hit(mv.type,o,mode)):'–'}</td>`).join('');
+    }
+    if(mv.effect==='status')return opps.map(o=>{const b=statusBlock(mv,o,mode);return `<td class="m">${b?`<span class="x z" title="${esc(b)}">No</span>`:'<span class="x g">Yes</span>'}</td>`;}).join('');
+    if(mv.effect==='hazard')return hazardHits(mv,opps,mode).map(h=>`<td class="m"><span class="x ${h.pct>12.5?'gg':h.pct?'g':'z'}">${h.pct?h.pct+'%':'0'}</span></td>`).join('');
+    return opps.map(()=>'<td class="m">–</td>').join('');
+  }
+  function moveNote(p,mv,opps){
+    if(mv.effect==='attack'){
+      if(!mv.type)return 'type not recognised';
+      if(mode==='gen5'&&mv.type==='Fa')return 'Fairy is not in the Gen 5 chart';
+      const m=opps.map(o=>hit(mv.type,o,mode)),se=m.filter(x=>x>1).length,rs=m.filter(x=>x<1&&x>0).length,im=m.filter(x=>x===0).length;
+      const parts=[];if(se)parts.push(se+' super effective');if(rs)parts.push(rs+' resisted');if(im)parts.push(im+' immune');
+      return [opps.length?(parts.join(', ')||'all neutral'):'',`${mv.cat}${mv.power?' · power '+mv.power:''}`].filter(Boolean).join(' · ');
+    }
+    return {setup:`Boost: ${boostText(mv.boosts)}`,status:mv.inflicts?`Inflicts ${mv.inflicts}`:'Drains HP each turn',hazard:'Damage when each opponent switches in',recovery:'Heals the user',protect:'Blocks attacks for a turn',support:'Helps your team',other:'Status move'}[mv.effect];
+  }
+  const KIND={attack:'Attack',setup:'Boost',status:'Status',hazard:'Hazard',recovery:'Heal',protect:'Protect',support:'Support',other:'Other'};
+  function renderMine(opps,oppFront){
+    lastOpps=opps;lastFront=oppFront;
+    const out=$('mine-out');$('btn-forget').hidden=!mine;$('ask-wrap').hidden=!mine||!opps.length||!sample;
+    if(!mine){out.innerHTML='';resetChat();return;}
+    let html='';
+    const plan=planTurn(mine,opps,mode,oppFront);
+    if(plan&&plan.none)html+='<div class="act sw"><div class="act-who"><span>Best move this turn</span></div><p>All of your Pokémon are marked as fainted. Untick one to get a suggestion.</p></div>';
+    else if(plan){
+      const a=plan.pick;
+      let what=`<span class="verb">Rotate</span><strong>${esc(a.p.name)}</strong><span class="verb">to the front, then</span>`;
+      if(a.kind==='switch')what+=`<span class="verb">switch it out for</span><strong>${esc(plan.bench.name)}</strong>`;
+      else what+=`<span class="verb">use</span><strong>${esc(a.mv.name)}</strong>${a.mv.type?chip(a.mv.type,'sm'):''}`;
+      html+=`<div class="act ${a.kind==='switch'?'sw':a.kind==='attack'?'':'st'}"><div class="act-who"><span>Best move this turn</span><span class="hp">${plan.lead?`their front: ${esc(plan.lead.name)}`:'their front: not set'}</span></div><div class="act-do">${what}</div><p>${esc(a.why)}</p>${plan.filled?`<p class="alt">${esc(plan.filled.name)} has taken the fainted Pokémon's place in your rotation.</p>`:''}${plan.lead?'':'<p class="alt">Mark which opponent is in front (the button on its card above) for a sharper pick.</p>'}</div>`;
+    }else html+='<p class="note">Add at least one opponent above to get a suggestion.</p>';
+    html+='<div class="roster">'+mine.map((p,pi)=>{
+      const mt=myTypes(p,mode);
+      const benchCtl=mine.length===4?`<div class="seg sm" role="group" aria-label="${esc(p.name)} position"><button type="button" data-pos="${pi}" data-b="0" aria-pressed="${!p.bench}">Rotation</button><button type="button" data-pos="${pi}" data-b="1" aria-pressed="${p.bench}">Bench</button></div>`:'';
+      const faintCtl=`<button type="button" class="faint-btn" data-faint="${pi}" aria-pressed="${p.fainted}">${p.fainted?'Fainted':'Mark fainted'}</button>`;
+      return `<div class="mon-head${p.bench?' benched':''}${p.fainted?' fainted':''}"><span>${esc(p.name)}</span>${mt.map(t=>chip(t,'sm')).join('')}${p.lev?'<span class="abil" title="Immune to Ground moves">Levitate</span>':''}<span class="grow"></span><label class="hpl" for="hp-${pi}">HP %</label><input class="hpi" type="number" id="hp-${pi}" data-hp="${pi}" min="1" max="100" value="${p.hp}"${p.fainted?' disabled':''}>${benchCtl}${faintCtl}</div>`;
+    }).join('')+'</div>';
+    html+='<details><summary>Move details for each Pokémon</summary><div class="mons">'+mine.map(p=>{
+      const mt=myTypes(p,mode),known=BYNAME.get(norm(p.name));
+      const rows=p.moves.map(mv=>{
+        const stab=mv.effect==='attack'&&mv.type&&mt.includes(mv.type);
+        return `<tr><td>${esc(mv.name)}${stab?'<span class="tag" title="Same-type attack bonus, 1.5× damage">STAB</span>':''}</td><td>${mv.type?chip(mv.type,'sm'):''}</td><td class="kind">${KIND[mv.effect]}</td>${moveCells(p,mv,opps)}<td class="sum">${esc(moveNote(p,mv,opps)||'')}</td></tr>`;
+      }).join('');
+      return `<div class="mon"><div class="mon-head"><span>${esc(p.name)}${p.fainted?' (fainted)':p.bench?' (bench)':''}</span>${known?'':'<span class="dex">not in the Gen 1–5 list</span>'}</div><div class="scroll"><table><thead><tr><th>Move</th><th>Type</th><th>Kind</th>${opps.map(o=>`<th class="m">${esc(o.name)}</th>`).join('')}<th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }).join('')+'</div><p class="note">How the pick is made (Rotation Battle rules): only the two front Pokémon act and get hit, and either side can rotate freely, so every option is valued against all three opponents, weighted toward the one marked as in front (60%) and toward the worst case, since they can rotate to counter you. Damage counts type effectiveness, STAB, power, accuracy and the user\'s attacking stat, and is discounted when their STAB types threaten your front Pokémon. Boosting counts when nothing on their side is super effective on you, status moves when your attacks cannot handle them, and switching when your bench Pokémon has much better options than your weakest one. Opponent threat counts their STAB types, Levitate and the coverage moves listed on each opponent card (at two-thirds weight, since they lack STAB). Any possible 4× hit, or a 2× hit on a Pokémon below 70% HP, counts as a knockout risk.</p></details>';
+    out.innerHTML=html;
+  }
+  $('mine-out').addEventListener('click',e=>{
+    const f=e.target.closest('button[data-faint]');
+    if(f&&mine){const p=mine[+f.dataset.faint];p.fainted=!p.fainted;render();return;}
+    const b=e.target.closest('button[data-pos]');if(!b||!mine)return;
+    const i=+b.dataset.pos;setBench(mine,b.dataset.b==='1'?i:(mine[i].bench?(i===3?2:3):mine.findIndex(p=>p.bench)));render();
+  });
+  $('mine-out').addEventListener('change',e=>{
+    const i=e.target.dataset.hp;if(i===undefined||!mine)return;
+    const v=Math.round(+e.target.value);mine[+i].hp=v>=1&&v<=100?v:100;render();
+  });
+  async function shrink(file){
+    try{
+      const bmp=await createImageBitmap(file),s=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+      const c=document.createElement('canvas');c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);
+      c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+      return await new Promise(r=>c.toBlob(b=>r(b||file),'image/jpeg',.9));
+    }catch(e){return file;}
+  }
+  const PROMPT=`These screenshots come from a Pokémon game (Generations 1-5) and show the player's own team: up to 3 active Pokémon plus 1 on the bench, and their moves. Reply with JSON only, in exactly this shape:
+{"team":[{"pokemon":"English species name","types":["Fire","Bug"],"hp_percent":100,"bench":false,"base_atk":60,"base_spa":135,"ability":"Flame Body","moves":[{"name":"Quiver Dance","type":"Bug","category":"status","power":null,"accuracy":null,"effect":"setup","boosts":{"spa":1,"spd":1,"spe":1},"inflicts":null}]}]}
+Field rules:
+- Include only the player's own Pokémon, at most 4, each with at most 4 moves. List a Pokémon once even if it appears in several screenshots.
+- types, base_atk and base_spa: the species' Generation 5 values, from your knowledge.
+- ability: read it if a screenshot shows it; otherwise the species' usual Generation 5 ability (for example Levitate for Gengar, Bronzong or Rotom).
+- hp_percent: current HP as a percentage if an HP bar or numbers are visible, otherwise null.
+- bench: true if the screenshot shows this Pokémon is not on the field (for example it is listed after the active ones in a party screen, or not shown in battle while others are); false if it is clearly active; null if you cannot tell.
+- Move type, category, power and accuracy: read them if shown, otherwise use Generation 5 values. power and accuracy are null when the move has none or it varies.
+- effect: "attack" for damaging moves. For status moves: "setup" (raises the user's own stats), "status" (inflicts a status condition or Leech Seed), "hazard" (Stealth Rock, Spikes, Toxic Spikes), "recovery" (heals the user: Recover, Roost, Rest, Synthesis and so on), "protect" (Protect, Detect), "support" (helps allies or the side: Reflect, Light Screen, Tailwind, Trick Room, Helping Hand, Follow Me, Rage Powder, Wide Guard, Safeguard, Heal Pulse), or "other".
+- boosts: for setup moves, stages raised, keyed by atk, def, spa, spd, spe, acc, eva. Otherwise {}.
+- inflicts: for status moves, one of sleep, paralysis, burn, toxic, poison, confusion; otherwise null.
+If no moves are visible, reply {"team":[]}.`;
+  let sample=null,busy=false;
+  const shotBtn=$('btn-shots'),shotIn=$('shots'),shotStatus=$('shot-status');
+  const zone=$('paste-zone');zone.classList.add('off');
+  shotStatus.textContent='Checking whether screenshot reading is available…';
+  (async()=>{
+    try{
+      for(let i=0;i<30&&!window.claude;i++)await new Promise(r=>setTimeout(r,100));
+      sample=window.claude&&window.claude.use?await window.claude.use('sample'):null;
+    }catch(e){sample=null;}
+    if(sample){shotBtn.disabled=false;$('btn-cov').disabled=false;zone.classList.remove('off');shotStatus.textContent='';render();if(autoCov)lookupCoverage(currentOppNames(),false);}
+    else shotStatus.textContent='Screenshot reading, team planning and the Claude chat only work when this page is opened on claude.ai. The type calculator above works everywhere.';
+  })();
+  shotBtn.addEventListener('click',()=>shotIn.click());
+  $('btn-forget').addEventListener('click',()=>{mine=null;shotStatus.textContent='';render();});
+  shotIn.addEventListener('change',()=>{const f=[...shotIn.files];shotIn.value='';readShots(f);});
+  zone.addEventListener('click',()=>zone.focus());
+  zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!shotBtn.disabled)shotIn.click();}});
+  // Paste anywhere on the page, except while typing in an opponent box
+  document.addEventListener('paste',e=>{
+    const items=[...((e.clipboardData&&e.clipboardData.items)||[])];
+    const imgs=items.filter(it=>it.kind==='file'&&it.type.startsWith('image/')).map(it=>it.getAsFile()).filter(Boolean);
+    if(!imgs.length){
+      if(document.activeElement===zone)shotStatus.textContent='The clipboard has no image. Copy a screenshot first, then paste again.';
+      return;
+    }
+    e.preventDefault();
+    readShots(imgs.map((f,i)=>f.name&&f.name!=='image.png'?f:new File([f],`pasted-${i+1}.png`,{type:f.type})));
+  });
+  ['dragenter','dragover'].forEach(t=>zone.addEventListener(t,e=>{e.preventDefault();zone.classList.add('over');}));
+  ['dragleave','drop'].forEach(t=>zone.addEventListener(t,()=>zone.classList.remove('over')));
+  zone.addEventListener('drop',e=>{e.preventDefault();readShots([...(e.dataTransfer?e.dataTransfer.files:[])]);});
+
+  async function readShots(list){
+    const files=list.filter(f=>f&&f.type&&f.type.startsWith('image/'));
+    if(!files.length){if(list.length)shotStatus.textContent='Those files are not images. Use PNG or JPEG screenshots.';return;}
+    if(busy){shotStatus.textContent='Still reading the last screenshots. Try again in a moment.';return;}
+    if(!sample){shotStatus.textContent='Screenshot reading is not available in this view.';return;}
+    busy=true;shotBtn.disabled=true;
+    try{
+      const lim=(await sample.limits()).images;
+      if(!lim){shotStatus.textContent='Image reading is not available in this view.';return;}
+      const max=typeof lim==='number'?lim:(lim&&(lim.max||lim.maxCount))||6;
+      const use=files.slice(0,max);
+      shotStatus.textContent=`Reading ${use.length} screenshot${use.length>1?'s':''}…`+(files.length>use.length?` Only the first ${use.length} are used.`:'');
+      const blobs=await Promise.all(use.map(shrink));
+      const res=await sample.json(PROMPT,{images:blobs});
+      const team=cleanTeam(res&&res.team);
+      if(!team.length){shotStatus.textContent='No Pokémon moves were found in those screenshots. Try a summary screen or the battle move menu.';return;}
+      mine=team;
+      shotStatus.textContent=`Read ${team.length} Pokémon from your screenshots${team.length===4?`, with ${team.find(p=>p.bench).name} on the bench`:''}. Move details are filled in by Claude, so check any that look wrong. Adjust HP and the bench below.`;
+      render();
+    }catch(e){
+      const code=e&&e.code;
+      shotStatus.textContent=code==='not_granted'?'Screenshot reading was not allowed, so nothing was read.':
+        code==='rate_limited'?'Too many requests right now. Wait a minute and try again.':
+        'The screenshots could not be read. Try again with a clearer image.';
+    }finally{busy=false;shotBtn.disabled=false;}
+  }
+
+  // ---- Ask Claude for a deeper plan ----
+  let asking=null;
+  const typeNames=ts=>ts.map(t=>T[t]).join('/');
+  function describeMove(mv){
+    const bits=[mv.type?T[mv.type]:'unknown type',mv.cat];
+    if(mv.power)bits.push('power '+mv.power);
+    if(mv.effect==='setup')bits.push('boosts '+boostText(mv.boosts));
+    else if(mv.effect!=='attack')bits.push(mv.inflicts?`${mv.effect}: ${mv.inflicts}`:mv.effect);
+    return `${mv.name} (${bits.join(', ')})`;
+  }
+  function battleContext(){
+    const plan=planTurn(mine,lastOpps,mode,lastFront);
+    const a0=plan&&plan.pick&&!plan.none?plan.pick:null;
+    const ruleLines=a0?(a0.kind==='switch'?`rotate ${a0.p.name} to the front and switch it out for ${plan.bench.name}`:`rotate ${a0.p.name} to the front and use ${a0.mv.name}`):'none';
+    return `Opponents: ${lastOpps.map(o=>`${o.name} (${typeNames(typesOf(o,mode))}${o.lev?', has Levitate':''}${o.cov&&o.cov.length?`; known or likely coverage: ${o.cov.map(c=>c.move?`${c.move} (${T[c.type]})`:`a ${T[c.type]} move`).join(', ')}`:''})`).join(', ')}.${lastFront?` Their front Pokémon is currently ${lastFront.name}.`:' Their current front Pokémon is not known.'}
+
+Player's team:
+${mine.filter(p=>!p.fainted).map(p=>`- ${p.name} (${typeNames(myTypes(p,mode))}), ${p.bench&&!(plan&&plan.filled===p)?'BENCH':'in rotation'}, ${p.hp}% HP${p.ability?', ability '+p.ability:p.lev?', ability Levitate':''}. Moves: ${p.moves.map(describeMove).join('; ')}.`).join('\n')}
+${mine.some(p=>p.fainted)?`\nFainted (ignore): ${mine.filter(p=>p.fainted).map(p=>p.name).join(', ')}.\n`:''}
+The page's rule-based planner currently suggests: ${ruleLines}.`;
+  }
+  const RULES=()=>`You are a Pokémon battle coach helping a player during a Rotation Battle (Black/White rules): each side has 3 Pokémon in a rotation and the player also has 1 on the bench. At the start of each turn either side may rotate any of its 3 to the front for free; only the front Pokémon acts, and only the front Pokémon can be hit. Stat boosts stay when a Pokémon rotates out. The player's choice each turn is which Pokémon to put in front and what it does: use one move, or switch the front Pokémon out for the bench Pokémon. The opponent can also rotate, so think about what they will put in front. Use the ${mode==='gen5'?'Generation 5 type chart (no Fairy type)':'modern type chart with the Fairy type'}. Think about Speed order, common abilities, items and likely moves of the opposing species. Always check each opponent's common coverage moves, not only its STAB types: an off-type move that is super effective can knock out a Pokémon that looks safe (for example Alakazam's Energy Ball hits Rock/Water types like Kabutops for 4×). When a Pokémon you recommend could be knocked out by a coverage move from an opponent that can rotate in, say so and weigh a safer lead.
+Always reply in plain text with no markdown. The player will chat with you about the fight and may add details the page does not know (held items, moves the opponent has shown, what happened last turn). Answer briefly, under 120 words, and when you recommend an action, phrase it as "rotate Name to the front and use Move" or "rotate Name to the front and switch it out for BenchName".`;
+  const FIRST_ASK='What is the single best action for this turn? Reply in at most 4 short lines: first line "Best: ...", second line the reason, third line starting "Watch for:" about what the opponent may do next, and a fourth line only if you disagree with the rule-based suggestion, saying why.';
+  let convo=[],chatCtx='',chatBusy=false;
+  const log=$('chat-log'),chatIn=$('chat-input'),chatSend=$('chat-send'),chatClear=$('chat-clear'),chatNote=$('chat-note');
+  function renderChat(){
+    log.innerHTML=convo.map(m=>`<div class="msg ${m.role}${m.err?' err':''}">${esc(m.shown||'…')}</div>`).join('');
+    log.scrollTop=log.scrollHeight;
+    chatClear.hidden=!convo.length||chatBusy;
+    $('btn-ask').textContent=convo.length?'New second opinion':'Ask Claude for a second opinion';
+  }
+  function resetChat(){if(asking)asking.abort();convo=[];chatCtx='';chatNote.textContent='';renderChat();}
+  async function sendChat(text,fresh){
+    if(!sample||!mine||!lastOpps.length||chatBusy)return;
+    const ctx=battleContext();
+    if(fresh||!convo.length){
+      if(asking)asking.abort();
+      convo=[{role:'user',content:`${RULES()}\n\nThe battle right now:\n${ctx}\n\n${fresh?FIRST_ASK:'The player asks: '+text}`,shown:fresh?'What is the best move this turn?':text}];
+    }else{
+      const changed=ctx!==chatCtx;
+      convo.push({role:'user',content:(changed?`(The battle on the page has changed. Current state:\n${ctx})\n\n`:'')+text,shown:text});
+    }
+    chatCtx=ctx;
+    const reply={role:'assistant',content:'',shown:''};convo.push(reply);
+    chatBusy=true;chatSend.disabled=true;$('btn-ask').disabled=true;chatNote.textContent='Claude is thinking…';renderChat();
+    asking=new AbortController();
+    try{
+      const msgs=convo.slice(0,-1).map(({role,content})=>({role,content}));
+      const r=await sample(msgs,{signal:asking.signal,modelTier:'default',cache:false,onText:({text:t})=>{reply.shown=t;const last=log.lastElementChild;if(last){last.textContent=t;log.scrollTop=log.scrollHeight;}}});
+      reply.content=r.text;reply.shown=r.text+(r.truncated?'\n(Cut short.)':'');chatNote.textContent='';
+    }catch(e){
+      // Drop the failed exchange so the conversation stays valid
+      convo.pop();const u=convo.pop();
+      if(e&&e.name==='AbortError'){chatNote.textContent='';}
+      else{
+        if(u&&!fresh&&!chatIn.value)chatIn.value=u.shown;
+        chatNote.textContent=e&&e.code==='not_granted'?'Chatting with Claude was not allowed.':e&&e.code==='rate_limited'?'Too many requests right now. Wait a minute and try again.':'Claude could not answer this time. Try again.';
+      }
+      if(!convo.length)chatCtx='';
+    }finally{chatBusy=false;chatSend.disabled=false;$('btn-ask').disabled=false;renderChat();}
+  }
+  $('btn-ask').addEventListener('click',()=>sendChat('',true));
+  $('chat-form').addEventListener('submit',e=>{e.preventDefault();const t=chatIn.value.trim();if(!t)return;chatIn.value='';sendChat(t,false);});
+  chatIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chat-form').requestSubmit();}});
+  chatClear.addEventListener('click',()=>{resetChat();chatIn.focus();});
+
+  // ---- Coverage lookup via Claude ----
+  const covAsked=new Set();let covBusy=false;
+  async function lookupCoverage(names,manual){
+    if(!sample||covBusy)return;
+    const want=names.filter(n=>manual||(!covStore[n]&&!covAsked.has(n)));if(!want.length){if(manual)$('cov-status').textContent='Coverage is already known for these opponents. Remove a move with × or add a type by hand.';return;}
+    want.forEach(n=>covAsked.add(n));covBusy=true;$('btn-cov').disabled=true;$('cov-status').textContent=`Looking up coverage moves for ${joinList(want)}…`;
+    try{
+      const r=await sample.json(`For each Pokémon below, list the attacking moves of a type different from the Pokémon's own types (coverage moves) that it commonly carries in Generation 5 (Black/White and Black 2/White 2), in competitive play and in-game. Up to 4 per Pokémon, most common first. Only damaging moves. Reply with JSON only, keyed by the exact names given, like {"Alakazam":[{"move":"Energy Ball","type":"Grass"},{"move":"Focus Blast","type":"Fighting"}]}.\nPokémon: ${want.join(', ')}`,{modelTier:'default'});
+      let n=0;
+      for(const name of want){
+        const e=BYNAME.get(norm(name));if(!e)continue;
+        const list=(r&&Array.isArray(r[name])?r[name]:[]).map(c=>({move:String(c.move||'').slice(0,30),type:tc(c.type)})).filter(c=>c.type&&!split(e.t).includes(c.type)).slice(0,4);
+        const manualOnes=(covStore[e.name]||[]).filter(c=>!c.move||!list.some(x=>x.type===c.type));
+        covStore[e.name]=[...list,...manualOnes.filter(c=>!list.some(x=>x.type===c.type))];n++;
+      }
+      autoCov=true;saveCov();$('cov-status').textContent=n?`Added likely coverage moves for ${joinList(want)}. Remove any with × or add a type by hand.`:'Claude did not return any coverage moves.';
+      render();
+    }catch(e){
+      $('cov-status').textContent=e&&e.code==='not_granted'?'Looking up coverage was not allowed. You can still add coverage types by hand.':e&&e.code==='rate_limited'?'Too many requests right now. Try again in a minute.':'Coverage lookup failed. Try again, or add types by hand.';
+    }finally{covBusy=false;$('btn-cov').disabled=!sample;}
+  }
+  const currentOppNames=()=>inputs.map(i=>BYNAME.get(norm(i.value.trim()))).filter(Boolean).map(e=>e.name);
+  $('btn-cov').addEventListener('click',()=>lookupCoverage(currentOppNames(),true));
+  let covTimer=null;
+  inputs.forEach(i=>i.addEventListener('change',()=>{if(autoCov&&sample){clearTimeout(covTimer);covTimer=setTimeout(()=>lookupCoverage(currentOppNames(),false),400);}}));
+
+  function setMode(m){mode=m;$('mode-gen5').setAttribute('aria-pressed',m==='gen5');$('mode-modern').setAttribute('aria-pressed',m==='modern');render();}
+  inputs.forEach(i=>{i.addEventListener('input',render);i.addEventListener('focus',()=>i.select());});
+  $('mode-gen5').addEventListener('click',()=>setMode('gen5'));
+  $('mode-modern').addEventListener('click',()=>setMode('modern'));
+  $('btn-clear').addEventListener('click',()=>{inputs.forEach(i=>i.value='');render();inputs[0].focus();});
+  $('btn-random').addEventListener('click',()=>{
+    const s=new Set();while(s.size<3)s.add(MONS[Math.floor(Math.random()*MONS.length)].name);
+    [...s].forEach((n,i)=>inputs[i].value=n);render();
+  });
+  let saved=null;try{saved=JSON.parse(localStorage.getItem('matchup-team'));}catch(e){}
+  const start=saved&&Array.isArray(saved.v)&&saved.v.some(Boolean)?saved.v:['Garchomp','Ferrothorn','Volcarona'];
+  if(saved&&Array.isArray(saved.mine)){try{const t=cleanTeam(saved.mine);if(t.length)mine=t;}catch(e){}}
+  start.slice(0,3).forEach((n,i)=>inputs[i].value=n||'');
+  if(saved&&Number.isInteger(saved.front)&&saved.front>=0&&saved.front<3)front=saved.front;
+  setMode(saved&&saved.mode==='modern'?'modern':'gen5');
+}else{module.exports={MONS,analyze,mult,typesOf,BYNAME,norm,T,FAIRY,cleanTeam,planTurn,setBench,LEVITATE,threatsTo};}
+</script>
+</body>
+</html>
